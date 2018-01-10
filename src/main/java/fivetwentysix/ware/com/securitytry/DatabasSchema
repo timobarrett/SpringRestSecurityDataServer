@@ -1,0 +1,49 @@
+CREATE TABLE `distance` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `locationid` int(11) NOT NULL,
+  `distancedate` bigint(8) NOT NULL,
+  `mileage` double NOT NULL,
+  `runduration` bigint(8) NOT NULL,
+  `totalduration` bigint(8) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `fk_date_idx` (`distancedate`),
+  KEY `FK11318BF5A2238744` (`locationid`),
+  CONSTRAINT `FK11318BF5A2238744` FOREIGN KEY (`locationid`) REFERENCES `location` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=199 DEFAULT CHARSET=utf8;
+
+CREATE TABLE `weather` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `location_id` int(11) NOT NULL,
+  `weatherdate` bigint(8) NOT NULL,
+  `shortdesc` longtext NOT NULL,
+  `temp` double NOT NULL,
+  `humidity` double NOT NULL,
+  `pressure` double NOT NULL,
+  `wind` double NOT NULL,
+  `degrees` varchar(10) NOT NULL,
+  `storm` int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `fk_location_id_idx` (`location_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=273 DEFAULT CHARSET=utf8;
+
+CREATE TABLE `location` (
+  `id` int(11) NOT NULL,
+  `zipcode` varchar(11) NOT NULL,
+  `cityname` varchar(45) NOT NULL,
+  `coordlat` double NOT NULL,
+  `coordlon` double NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `zipcode_UNIQUE` (`zipcode`),
+  UNIQUE KEY `id_UNIQUE` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `user` (
+  `username` varchar(50) NOT NULL,
+  `password` varchar(100) NOT NULL,
+  `full_name` varchar(100) NOT NULL,
+  `role` varchar(50) NOT NULL,
+  `country` varchar(100) NOT NULL,
+  `enabled` tinyint(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
