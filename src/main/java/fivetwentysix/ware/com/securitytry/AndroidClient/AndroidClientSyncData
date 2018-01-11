@@ -1,0 +1,275 @@
+package fivetwentysix.ware.com.actotracker;
+
+import android.content.Context;
+import android.database.Cursor;
+import android.net.Uri;
+import android.util.Base64;
+import android.util.Log;
+
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpCookie;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+
+import dalvik.annotation.TestTarget;
+import fivetwentysix.ware.com.actotracker.appData.ActoTrackerContract;
+
+import static java.net.HttpURLConnection.HTTP_BAD_REQUEST;
+import static java.net.HttpURLConnection.HTTP_INTERNAL_ERROR;
+import static java.net.HttpURLConnection.HTTP_NOT_AUTHORITATIVE;
+
+/**
+ * Created by tim on 5/5/2017.
+ */
+
+public class SyncData {
+    final static String LOG_TAG = "actotracker- "+ SyncData.class.getSimpleName();
+    private HttpURLConnection connect;
+    private String username;
+    private String password;
+    private HttpURLConnection connection;
+    private String connectCookie;
+    private Boolean isConnected;
+    Context mContext;
+    Cursor mCursor;
+
+    public SyncData(Context context){mContext = context;}
+
+    public Map<String,String> buildLoginHeader(String username, String password){
+            HashMap<String, String> params = new HashMap<String, String>();
+            String creds = String.format("%s:%s", username, password);
+            String auth = "Basic " + Base64.encodeToString(creds.getBytes(), Base64.NO_WRAP);
+            params.put("Authorization", auth);
+            return params;
+    }
+
+    void setupSession(String username, String password){
+        URL url;
+        String path = "http://192.168.1.103:8443/run-service/user/login";
+        String authentication = username+":"+password;
+        String encodedAuthentication = Base64.encodeToString(authentication.getBytes(), Base64.NO_WRAP);
+        try {
+            connection = (HttpURLConnection) (new URL(path).openConnection());
+            connection.setRequestProperty("Authorization", "Basic " + encodedAuthentication);
+            connection.setUseCaches(false);
+            connection.setConnectTimeout(15000);
+            connection.setReadTimeout(15000);
+            connection.setRequestMethod("POST");
+            connection.setDoInput(true);
+            connection.setDoOutput(true);
+
+            connection.connect();
+            if (connection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                isConnected = true;
+                connectCookie = connection.getHeaderField("Set-Cookie");
+            }
+            else{
+                int stat = connection.getResponseCode(); //need to set something here to cover fail connect
+            }
+        }catch(MalformedURLException e){
+            isConnected = false;
+        }
+        catch(IOException e){
+            isConnected = false;
+        }
+    }
+    /**
+     * needed to add run-service when run in tomcat.
+     * @param tableName - name of the database table
+     *String authentication = scuttleUsername+":"+scuttlePassword;
+    String encodedAuthentication = Base64.encodeToString(authentication.getBytes(), Base64.NO_WRAP);
+
+    HttpURLConnection c = (HttpURLConnection)(new URL(scuttleURL+url).openConnection());
+    c.setRequestProperty("Authorization", "Basic "+encodedAuthentication);
+    c.setUseCaches(false);
+     *
+     */
+    void prepareToSync(String tableName) {
+        URL url;
+        String path = "http://192.168.1.103:8443/run-service/"+tableName+"/save";
+   //     String path = "http://192.168.1.103:8080/"+tableName+"/save";
+        Log.d(LOG_TAG, "IN prepareForSync");
+        try {
+            url = new URL(path);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestProperty("Cookie",connectCookie);
+            connection.setReadTimeout(15000);
+            connection.setConnectTimeout(15000);
+            connection.setRequestMethod("POST");
+            connection.setDoInput(true);
+            connection.setDoOutput(true);
+
+        } catch (MalformedURLException mue) {
+            Log.d(LOG_TAG, "MalformedURLException - prepare for sync");
+        }//DatabaseProcessor.getInstance().logErrorEvent(mue);}
+        catch (IOException ie) {
+            Log.d(LOG_TAG, "IOException - prepareForSync");
+        }
+    }
+
+    void getDataToSync(Uri tableUri,String tableName){
+        Log.d(LOG_TAG,"IN getDataToSync");
+        // query the table
+        mCursor = mContext.getContentResolver().query(
+                tableUri,
+                null, null, null, null);
+        if (mCursor != null && mCursor.getCount()>0){
+            mCursor.moveToFirst();
+        }
+        syncTableData(tableName);
+    }
+
+    public void syncTableData(String tableName){
+        Log.d(LOG_TAG,"IN syncTableData");
+
+        boolean postError = false;
+        switch (tableName) {
+            case "location":
+                syncLocationData();
+                break;
+            case "weather":
+                syncWeatherData();
+                break;
+            case "distance":
+                syncDistanceData();
+                break;
+            case "summary":
+                break;
+            case "locale":
+                break;
+        }
+
+        connection.disconnect();
+        mCursor.close();
+
+    }
+
+    private boolean syncLocationData(){
+        boolean postError = false;
+        do{
+            prepareToSync("location");
+            StringBuilder sbResult = new StringBuilder();
+            try {
+                sbResult.append(URLEncoder.encode("id","UTF-8")).append("=").append(Integer.toString(mCursor.getColumnIndex(ActoTrackerContract.LocationEntry.COLUMN_LOCATION_SETTING)));
+                sbResult.append("&");
+                sbResult.append(URLEncoder.encode("zipcode", "UTF-8")).append("=");
+                String zipcode = mCursor.getString(mCursor.getColumnIndex(ActoTrackerContract.LocationEntry.COLUMN_LOCATION_SETTING));
+                sbResult.append(URLEncoder.encode(zipcode, "UTF-8")).append("&").append(URLEncoder.encode("cityname", "UTF-8")).append("=");
+                sbResult.append(URLEncoder.encode(mCursor.getString(mCursor.getColumnIndex(ActoTrackerContract.LocationEntry.COLUMN_CITY)), "UTF-8"));
+                sbResult.append("&").append(URLEncoder.encode("coord_lat", "UTF-8")).append("=");
+                String lat = Double.toString(mCursor.getDouble(mCursor.getColumnIndex(ActoTrackerContract.LocationEntry.COLUMN_COORD_LAT)));
+                sbResult.append(URLEncoder.encode(lat, "UTF-8")).append("&").append(URLEncoder.encode("coord_lon", "UTF-8")).append("=");
+                sbResult.append(Double.toString((mCursor.getDouble(mCursor.getColumnIndex(ActoTrackerContract.LocationEntry.COLUMN_COORD_LON)))));
+                Log.d(LOG_TAG,"REST POST Request = "+sbResult.toString());
+            }catch(UnsupportedEncodingException uee){DatabaseProcessor.getInstance().logErrorEvent(uee);}
+            if (sbResult.length()>0) {
+        //        connection.setRequestProperty("Cookie",connectCookie);
+                int status = postDataToServer(sbResult);
+                if (status == 0 || status >= HTTP_NOT_AUTHORITATIVE) {
+                    Log.d(LOG_TAG, "postDataToServerError " + status);
+                    postError = true;
+                }
+            }
+        }while (mCursor.moveToNext());
+        return postError;
+    }
+
+    private boolean syncWeatherData(){
+        boolean postError = false;
+        do{
+            prepareToSync("weather");
+            StringBuilder sbResult = new StringBuilder();
+            try {
+                sbResult.append(URLEncoder.encode("location", "UTF-8")).append("=");
+                String location = mCursor.getString(mCursor.getColumnIndex(ActoTrackerContract.WeatherEntry.COLUMN_LOC_KEY));
+                sbResult.append(URLEncoder.encode(location, "UTF-8")).append("&").append(URLEncoder.encode("date", "UTF-8")).append("=");
+                String ldate = Long.toString(mCursor.getLong(mCursor.getColumnIndex(ActoTrackerContract.WeatherEntry.COLUMN_DATE)));
+            Log.d(LOG_TAG,"LDATE = "+ ldate);
+                sbResult.append(URLEncoder.encode(ldate,"UTF-8")).append("&").append(URLEncoder.encode("short_desc","UTF-8")).append("=");
+                sbResult.append(mCursor.getString(mCursor.getColumnIndex(ActoTrackerContract.WeatherEntry.COLUMN_SHORT_DESC)));
+                sbResult.append("&").append(URLEncoder.encode("temp", "UTF-8")).append("=").append(
+                        Double.toString(mCursor.getDouble(mCursor.getColumnIndex(ActoTrackerContract.WeatherEntry.COLUMN_TEMP))));
+                sbResult.append("&").append(URLEncoder.encode("humidity", "UTF-8")).append("=").append(
+                        Double.toString(mCursor.getDouble(mCursor.getColumnIndex(ActoTrackerContract.WeatherEntry.COLUMN_HUMIDITY))));
+                sbResult.append("&").append(URLEncoder.encode("pressure", "UTF-8")).append("=").append(
+                        Double.toString(mCursor.getDouble(mCursor.getColumnIndex(ActoTrackerContract.WeatherEntry.COLUMN_PRESSURE))));
+                sbResult.append("&").append(URLEncoder.encode("wind", "UTF-8")).append("=").append(
+                        Double.toString(mCursor.getDouble(mCursor.getColumnIndex(ActoTrackerContract.WeatherEntry.COLUMN_WIND_SPEED))));
+                sbResult.append("&").append(URLEncoder.encode("degrees", "UTF-8")).append("=").append(
+                        mCursor.getString(mCursor.getColumnIndex(ActoTrackerContract.WeatherEntry.COLUMN_WIND_DEGREES)));
+                sbResult.append("&").append(URLEncoder.encode("storm", "UTF-8")).append("=").append(
+                        Integer.toString(mCursor.getInt(mCursor.getColumnIndex(ActoTrackerContract.WeatherEntry.COLUMN_BAD_WEATHER))));
+                Log.d(LOG_TAG,"REST POST Request = "+sbResult.toString());
+            }catch(UnsupportedEncodingException uee){DatabaseProcessor.getInstance().logErrorEvent(uee);}
+            if (sbResult.length()>0) {
+                int status = postDataToServer(sbResult);
+                if (status == 0 || status >= HTTP_NOT_AUTHORITATIVE) {
+                    Log.d(LOG_TAG, "postDataToServerError " + status);
+                    postError = true;
+                }
+            }
+        }while (mCursor.moveToNext());
+        return postError;
+    }
+
+    private boolean syncDistanceData(){
+        boolean postError = false;
+        do{
+            prepareToSync("distance");
+            StringBuilder sbResult = new StringBuilder();
+            try {
+                sbResult.append(URLEncoder.encode("location", "UTF-8")).append("=").append(Integer.toString(
+                        mCursor.getInt(mCursor.getColumnIndex(ActoTrackerContract.DistanceEntry.COLUMN_LOC_KEY)))).append("&");
+              sbResult.append(URLEncoder.encode("date","UTF-8")).append("=").append(Long.toString
+                        (mCursor.getLong(mCursor.getColumnIndex(ActoTrackerContract.DistanceEntry.COLUMN_DATE2))));
+                sbResult.append("&").append(URLEncoder.encode("mileage","UTF-8")).append("=").append(
+                                Double.toString(mCursor.getDouble(mCursor.getColumnIndex(ActoTrackerContract.DistanceEntry.COLUMN_MILEAGE))));
+                sbResult.append("&").append(URLEncoder.encode("run_duration", "UTF-8")).append("=").append(
+                        Long.toString(mCursor.getLong(mCursor.getColumnIndex(ActoTrackerContract.DistanceEntry.COLUMN_RUNNING_DURATION))));
+                sbResult.append("&").append(URLEncoder.encode("total_duration", "UTF-8")).append("=").append(
+                        Long.toString(mCursor.getLong(mCursor.getColumnIndex(ActoTrackerContract.DistanceEntry.COLUMN_TOTAL_DURATION))));
+                Log.d(LOG_TAG,"REST POST Request = "+sbResult.toString());
+            }catch(UnsupportedEncodingException uee){DatabaseProcessor.getInstance().logErrorEvent(uee);}
+            if (sbResult.length()>0) {
+                int status = postDataToServer(sbResult);
+                if (status == 0 || status >= HTTP_NOT_AUTHORITATIVE) {
+                    Log.d(LOG_TAG, "postDataToServerError "+ sbResult.toString());
+                    Log.d(LOG_TAG, "postDataToServerError " + status);
+                    postError = true;
+                }
+            }
+        }while (mCursor.moveToNext());
+        return postError;
+    }
+    private int postDataToServer(StringBuilder sb){
+        Log.d(LOG_TAG,"IN postDataToServer");
+        int response = 0;
+        try {
+           // prepareForSync();
+            OutputStream os = connection.getOutputStream();
+            BufferedWriter writer = new BufferedWriter(
+                    new OutputStreamWriter(os, "UTF-8"));
+            writer.write(sb.toString());
+            writer.flush();
+            writer.close();
+            os.close();
+            response = connection.getResponseCode();
+            Log.d(LOG_TAG,"post msg == "+sb.toString());
+
+        } catch (Exception e) {
+            Log.d(LOG_TAG,"postDataToserver Exception " + e.getMessage());
+        }
+        return response;
+    }
+}

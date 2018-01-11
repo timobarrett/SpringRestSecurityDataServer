@@ -1,0 +1,50 @@
+import android.content.Context;
+import android.support.test.InstrumentationRegistry;
+import android.support.test.runner.AndroidJUnit4;
+
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import java.util.Locale;
+
+import fivetwentysix.ware.com.actotracker.appData.ActoTrackerContract;
+
+/**
+ * Created by tim on 5/5/2017.
+ */
+@RunWith(AndroidJUnit4.class)
+public class SyncAllData {
+    Context mContext;
+    @Before
+    public void setupForTest() {
+        mContext = InstrumentationRegistry.getContext();
+    }
+    @Test
+    public void testSpankinNewLocatSync(){
+        SyncData sd = new SyncData(mContext);
+        sd.setupSession("tim","Dial0gicRots");
+        sd.getDataToSync(ActoTrackerContract.LocationEntry.CONTENT_URI,"location");
+    }
+
+    @Test
+    public void testSpankinWeatherSync() {
+        SyncData sd = new SyncData(mContext);
+        sd.setupSession("tim","Dial0gicRots");
+        sd.getDataToSync(ActoTrackerContract.WeatherEntry.CONTENT_URI,"weather");
+    }
+    @Test
+    public void testSpankinDistanceSync() {
+        SyncData sd = new SyncData(mContext);
+        sd.setupSession("tim","Dial0gicRots");
+        sd.getDataToSync(ActoTrackerContract.DistanceEntry.CONTENT_URI,"distance");
+    }
+    @Test
+    public void testLocationSync(){
+        SyncData sd = new SyncData(mContext);
+        sd.getDataToSync(ActoTrackerContract.LocationEntry.CONTENT_URI,"location");
+        sd.prepareToSync("location");
+
+    }
+
+}
